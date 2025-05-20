@@ -32,12 +32,10 @@ npm install react-state-reflector
 
 ### Android (Java)
 
-Option 1: Copy the `StateReflectorBridge.java` into your project:
+Copy the `StateReflectorBridge.java` into your project:
 ```java
-import com.example.statereflector.StateReflectorBridge;
+import so.fluid.reactstatereflector.StateReflectorBridge;
 ```
-
-Option 2: Use JitPack/Maven (coming soon)
 
 ---
 
