@@ -1,24 +1,49 @@
 # react-state-reflector
 
-**Bi-directional shared state between React and native Android.**  
-This lightweight library enables React apps running inside Android WebViews to transparently sync shared state with the native layer.
+**Bi-directional shared state between React (in WebViews) and native Android.**  
+This monorepo provides a React hook and an Android bridge class that synchronize state transparently between JavaScript and Java using a shared messaging protocol.
 
 ## ✨ Features
 
-- 🔁 Two-way state sync between React and Android
-- 🧠 Deep change detection via proxy — no manual setters or diffing needed
-- 💡 Works with plain React, no dependencies beyond `react`
-- 📦 Simple hook-based API: `useSharedState`
+- 🔁 Two-way state sync between React and Android WebView
+- 🧠 Deep change detection via Proxy — no manual setters needed
+- 📦 `useSharedState` hook in React auto-sends updates
+- 📲 Android bridge class for receiving/sending shared state
+
+---
+
+## 📦 Monorepo Structure
+
+```
+react-state-reflector/
+├── packages/
+│   ├── react/       # React library (useSharedState)
+│   └── android/     # Java library (StateReflectorBridge)
+```
+
+---
 
 ## 🚀 Installation
 
+### JavaScript (React)
 ```bash
 npm install react-state-reflector
 ```
 
+### Android (Java)
+
+Option 1: Copy the `StateReflectorBridge.java` into your project:
+```java
+import com.example.statereflector.StateReflectorBridge;
+```
+
+Option 2: Use JitPack/Maven (coming soon)
+
+---
+
 ## 🔧 Usage
 
-### In React
+### React
 
 ```tsx
 import { useSharedState } from "react-state-reflector";
@@ -52,49 +77,45 @@ function SettingsPanel() {
 }
 ```
 
-### In Android (Java)
+---
+
+### Android (Java)
 
 ```java
-@JavascriptInterface
-public void postMessage(String json) {
-    JSONObject msg = new JSONObject(json);
-    if ("SHARED_STATE_UPDATE".equals(msg.getString("type"))) {
-        String key = msg.getString("key");
-        Object value = msg.get("value");
-        // Store value or trigger logic...
-    }
-}
+StateReflectorBridge bridge = new StateReflectorBridge(myWebView);
+myWebView.addJavascriptInterface(bridge, "AndroidBridge");
 
-// Later, send update to JS:
-String script = "window.postMessage(" + new JSONObject()
-    .put("type", "SHARED_STATE_UPDATE_FROM_NATIVE")
-    .put("key", "prefs")
-    .put("value", new JSONObject().put("theme", "light"))
-    .toString() + ", '*');";
-webView.evaluateJavascript(script, null);
+// Listen for JS updates
+bridge.setOnStateUpdateListener((key, value) -> {
+    Log.d("Reflector", "JS updated: " + key + " = " + value);
+});
 ```
+
+Send native → JS update:
+```java
+JSONObject prefs = new JSONObject().put("theme", "light");
+bridge.sendStateToJS("prefs", prefs);
+```
+
+---
 
 ## 📦 API
 
 ### `useSharedState(key, initialValue)`
 
-Returns a deeply reactive object that automatically syncs across the JS/native boundary.
+- Deep proxy-wrapped object
+- Syncs to native on mutation
+- Receives updates from native via `postMessage`
 
-- Mutate fields directly: `prefs.theme = "light"`
-- No need to call a setter unless replacing the whole object
-- State is automatically mirrored to Android and back
+### `StateReflectorBridge` (Android)
 
-## 🔐 TypeScript Support
+- `postMessage(String json)` — called from JS
+- `sendStateToJS(String key, Object value)` — push update to JS
+- `setOnStateUpdateListener(BiConsumer<String, Object>)` — react to JS state
 
-Fully typed, with generics:
-
-```ts
-const [prefs] = useSharedState<Prefs>("prefs", {
-  theme: "dark",
-  notifications: true,
-});
-```
+---
 
 ## 📜 License
 
-MIT © [YourName or Organization]
+MIT © Fluid Immersive, Inc.
+
