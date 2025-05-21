@@ -6,9 +6,10 @@ This monorepo provides a React hook and an Android bridge class that synchronize
 ## ✨ Features
 
 - 🔁 Two-way state sync between React and Android WebView
-- 🧠 Deep change detection via Proxy — no manual setters needed
-- 📦 `useSharedState` hook in React auto-sends updates
+- 🧠 Automatic state synchronization on updates
+- 📦 `useSharedState` hook in React with familiar useState API
 - 📲 Android bridge class for receiving/sending shared state
+- 🔍 Optional debug logging for development
 
 ---
 
@@ -47,10 +48,14 @@ import so.fluid.reactstatereflector.StateReflectorBridge;
 import { useSharedState } from "react-state-reflector";
 
 function SettingsPanel() {
-  const [prefs] = useSharedState("prefs", {
+  // Use with a string key and initial value
+  const [prefs, setPrefs] = useSharedState("prefs", {
     theme: "dark",
     notifications: true,
   });
+
+  // Or use with just an initial value (auto-generates key)
+  const [count, setCount] = useSharedState(0);
 
   return (
     <div>
@@ -59,7 +64,10 @@ function SettingsPanel() {
         <input
           type="checkbox"
           checked={prefs.theme === "dark"}
-          onChange={(e) => (prefs.theme = e.target.checked ? "dark" : "light")}
+          onChange={(e) => setPrefs(prev => ({
+            ...prev,
+            theme: e.target.checked ? "dark" : "light"
+          }))}
         />
       </label>
       <label>
@@ -67,9 +75,15 @@ function SettingsPanel() {
         <input
           type="checkbox"
           checked={prefs.notifications}
-          onChange={(e) => (prefs.notifications = e.target.checked)}
+          onChange={(e) => setPrefs(prev => ({
+            ...prev,
+            notifications: e.target.checked
+          }))}
         />
       </label>
+      <button onClick={() => setCount(c => c + 1)}>
+        Count: {count}
+      </button>
     </div>
   );
 }
@@ -100,17 +114,24 @@ bridge.sendStateToJS("prefs", prefs);
 
 ## 📦 API
 
-### `useSharedState(key, initialValue)`
+### `useSharedState<T>(keyOrInitial: string | T, maybeInitial?: T)`
 
-- Deep proxy-wrapped object
-- Syncs to native on mutation
-- Receives updates from native via `postMessage`
+Returns a tuple `[state, setState]` similar to React's `useState`:
+
+- If first argument is a string, it's used as the key and second argument is the initial value
+- If first argument is not a string, it's used as the initial value and a UUID is generated as the key
+- State updates are automatically synchronized with Android
+- Supports both direct value updates and functional updates
 
 ### `StateReflectorBridge` (Android)
 
-- `postMessage(String json)` — called from JS
+- `postMessage(String json)` — called from JS to send updates
 - `sendStateToJS(String key, Object value)` — push update to JS
-- `setOnStateUpdateListener(BiConsumer<String, Object>)` — react to JS state
+- `setOnStateUpdateListener(BiConsumer<String, Object>)` — react to JS state updates
+
+### Debug Mode
+
+The library includes a debug mode that can be enabled by setting `DEBUG = true` in the code. When enabled, it logs all state updates to the console.
 
 ---
 
