@@ -1,0 +1,10 @@
+{
+  "name": "react-state-reflector-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=packages/react"
+  }
+} 

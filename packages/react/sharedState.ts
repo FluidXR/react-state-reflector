@@ -1,197 +1,106 @@
 import { useState, useEffect, useRef } from "react";
 import { v4 as uuidv4 } from "uuid";
 
+/* ------------------------------------------------------------------ */
+/*  Android bridge helpers                                            */
+/* ------------------------------------------------------------------ */
+
 declare global {
   interface Window {
-    StateReflectorBridge?: {
-      postMessage?: (message: string) => void;
-    };
+    StateReflectorBridge?: { postMessage?: (msg: string) => void };
   }
 }
 
-// Type guard for proxy objects
-function isProxy(obj: any): obj is { __isProxy: boolean } {
-  return obj && typeof obj === 'object' && '__isProxy' in obj;
-}
+const DEBUG = true;
+const log = (msg: string, data?: any) =>
+  DEBUG && console.log(`[StateReflector] ${msg}`, data ?? "");
 
-/**
- * Registry of all shared state instances (key → setState function)
- */
-const sharedStateRegistry = new Map<string, { set: (v: any) => void }>();
-
-/**
- * Debug mode flag - enabled when StateReflectorBridge is not available
- */
-const isDebugMode = true;
-
-/**
- * Debug logging utility
- */
-function debugLog(message: string, data?: any) {
-  if (isDebugMode) {
-    console.log(`[StateReflector Debug] ${message}`, data ? data : '');
+/** Send a state update to the Android side */
+function sendToAndroid(key: string, value: unknown) {
+  const payload = { type: "SHARED_STATE_UPDATE", key, value };
+  log("→ to Android", payload);
+  if (!DEBUG) {
+    window.StateReflectorBridge?.postMessage?.(JSON.stringify(payload));
   }
 }
 
-/**
- * Sends a shared state update to the Android bridge
- */
-function sendToAndroidSharedState(key: string, value: any) {
-  try {
-    const message = {
-      type: "SHARED_STATE_UPDATE",
-      key,
-      value,
-    };
-    
-    debugLog(`State Update for key "${key}":`, {
-      value,
-      timestamp: new Date().toISOString()
+/* ------------------------------------------------------------------ */
+/*  Global registry: key → all React setState functions               */
+/* ------------------------------------------------------------------ */
+
+type Setter<T> = React.Dispatch<React.SetStateAction<T>>;
+const registry = new Map<string, Set<Setter<any>>>();
+
+function dispatchToAll<T>(key: string, action: React.SetStateAction<T>) {
+  const setters = registry.get(key);
+  if (!setters?.size) return;
+
+  let lastValue: T | undefined;
+  setters.forEach(set => {
+    set((prev: T) => {
+      lastValue = typeof action === "function" ? (action as any)(prev) : action;
+      return lastValue as T;
     });
-
-    if (!isDebugMode) {
-      window.StateReflectorBridge?.postMessage?.(JSON.stringify(message));
-    }
-  } catch (err) {
-    console.error("Failed to send shared state to Android:", err);
-  }
-}
-
-/**
- * Updates an object with new values while maintaining reactivity
- */
-function updateReactiveObject<T extends object>(target: T, newValue: T) {
-  Object.keys(newValue).forEach(key => {
-    const value = (newValue as any)[key];
-    if (typeof value === 'object' && value !== null) {
-      if (!(target as any)[key] || !(target as any)[key].__isProxy) {
-        (target as any)[key] = createReactiveObject(value, () => {
-          sendToAndroidSharedState('', target);
-        });
-      } else {
-        updateReactiveObject((target as any)[key], value);
-      }
-    } else {
-      (target as any)[key] = value;
-    }
   });
+  if (lastValue !== undefined) sendToAndroid(key, lastValue);
 }
 
-/**
- * Creates a deep proxy for an object that tracks any mutation
- */
-function createReactiveObject<T extends object>(
-  obj: T,
-  onChange: () => void
-): T {
-  const handler: ProxyHandler<any> = {
-    get(target, prop) {
-      const value = target[prop];
-      if (typeof value === "object" && value !== null && !value.__isProxy) {
-        target[prop] = createReactiveObject(value, onChange);
-      }
-      return target[prop];
-    },
-    set(target, prop, value) {
-      if (target[prop] !== value) {
-        if (typeof value === 'object' && value !== null) {
-          if (!target[prop] || !target[prop].__isProxy) {
-            target[prop] = createReactiveObject(value, onChange);
-          } else {
-            updateReactiveObject(target[prop], value);
-          }
-        } else {
-          target[prop] = value;
-        }
-        onChange();
-      }
-      return true;
-    },
-    deleteProperty(target, prop) {
-      if (prop in target) {
-        delete target[prop];
-        onChange();
-      }
-      return true;
-    }
-  };
+/* ------------------------------------------------------------------ */
+/*  useSharedState – API identical to React.useState                  */
+/* ------------------------------------------------------------------ */
 
-  const proxy = new Proxy(obj, handler);
-  Object.defineProperty(proxy, "__isProxy", {
-    value: true,
-    enumerable: false,
-  });
-
-  return proxy;
-}
-
-/**
- * React hook for shared state synced with Android WebView
- */
-export function useSharedState<T extends object>(
+export function useSharedState<T>(
   keyOrInitial: string | T,
   maybeInitial?: T
-): [T, (v: T) => void] {
+): [T, React.Dispatch<React.SetStateAction<T>>] {
+  // Derive key + initial value
   const key = typeof keyOrInitial === "string" ? keyOrInitial : uuidv4();
-  const initial = typeof keyOrInitial === "string" ? maybeInitial! : keyOrInitial;
-  const keyRef = useRef(key);
-  const initialRef = useRef(initial);
+  const initial =
+    (typeof keyOrInitial === "string" ? maybeInitial : keyOrInitial) as T;
 
-  const [, forceRender] = useState(0);
-  const proxyRef = useRef<T>(initial);
+  const [state, setState] = useState<T>(initial);
+  const keyRef = useRef(key); // stable between renders
 
-  const triggerUpdate = () => {
-    const current = proxyRef.current!;
-    sendToAndroidSharedState(keyRef.current, current);
-    forceRender((v) => v + 1);
-  };
-
+  /* ---- Register / unregister this component's setter ---- */
   useEffect(() => {
-    if (!isProxy(proxyRef.current)) {
-      proxyRef.current = createReactiveObject({ ...initialRef.current }, triggerUpdate);
+    let entry = registry.get(keyRef.current);
+    if (!entry) {
+      entry = new Set();
+      registry.set(keyRef.current, entry);
     }
-
-    sharedStateRegistry.set(keyRef.current, {
-      set: (newValue) => {
-        const oldValue = proxyRef.current;
-        updateReactiveObject(proxyRef.current, newValue);
-        // Only trigger update if the value actually changed
-        if (JSON.stringify(oldValue) !== JSON.stringify(proxyRef.current)) {
-          triggerUpdate();
-        }
-      },
-    });
+    entry.add(setState);
 
     return () => {
-      sharedStateRegistry.delete(keyRef.current);
+      entry!.delete(setState);
+      if (entry!.size === 0) registry.delete(keyRef.current);
     };
-  }, []); // Empty dependency array since we're using refs
+  }, []);
 
-  return [proxyRef.current!, (v: T) => {
-    sharedStateRegistry.get(keyRef.current)?.set(v);
-  }];
+  /* ---- Public setter: broadcast to every subscriber ---- */
+  const sharedSetter: React.Dispatch<React.SetStateAction<T>> = action => {
+    dispatchToAll<T>(keyRef.current, action);
+  };
+
+  return [state, sharedSetter];
 }
 
-/**
- * One-time global bridge listener (auto-installs)
- */
-function installBridgeListener() {
+/* ------------------------------------------------------------------ */
+/*  One-time listener for messages coming **from** native code        */
+/* ------------------------------------------------------------------ */
+
+(function installBridgeListener() {
   if ((window as any).__sharedStateBridgeInstalled) return;
   (window as any).__sharedStateBridgeInstalled = true;
 
-  window.addEventListener("message", (event) => {
+  window.addEventListener("message", evt => {
     try {
-      const { type, key, value } = JSON.parse(event.data);
+      const { type, key, value } = JSON.parse(evt.data);
       if (type === "SHARED_STATE_UPDATE_FROM_NATIVE") {
-        const entry = sharedStateRegistry.get(key);
-        if (entry) {
-          entry.set(value);
-        }
+        log("← from Android", { key, value });
+        dispatchToAll(key, value); // push to every hooked component
       }
-    } catch (err) {
-      // Ignore malformed messages
+    } catch {
+      /* ignore non-JSON or unrelated messages */
     }
   });
-}
-
-installBridgeListener();
+})();
