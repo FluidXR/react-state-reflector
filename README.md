@@ -81,7 +81,8 @@ function SettingsPanel() {
 
 ```java
 StateReflectorBridge bridge = new StateReflectorBridge(myWebView);
-myWebView.addJavascriptInterface(bridge, "AndroidBridge");
+// ⚠️ IMPORTANT: The interface name MUST be exactly "StateReflectorBridge"
+myWebView.addJavascriptInterface(bridge, "StateReflectorBridge");
 
 // Listen for JS updates
 bridge.setOnStateUpdateListener((key, value) -> {
@@ -116,4 +117,3 @@ bridge.sendStateToJS("prefs", prefs);
 ## 📜 License
 
 MIT © Fluid Immersive, Inc.
-
