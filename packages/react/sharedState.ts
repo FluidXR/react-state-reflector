@@ -11,17 +11,13 @@ declare global {
   }
 }
 
-const DEBUG = true;
-const log = (msg: string, data?: any) =>
-  DEBUG && console.log(`[StateReflector] ${msg}`, data ?? "");
+const log = (msg: string, data?: any) => console.log(`[StateReflector] ${msg}`, data ?? "");
 
 /** Send a state update to the Android side */
 function sendToAndroid(key: string, value: unknown) {
   const payload = { type: "SHARED_STATE_UPDATE", key, value };
-  log("→ to Android", payload);
-  if (!DEBUG) {
-    window.StateReflectorBridge?.postMessage?.(JSON.stringify(payload));
-  }
+  window.StateReflectorBridge?.postMessage?.(JSON.stringify(payload));
+  
 }
 
 /* ------------------------------------------------------------------ */
