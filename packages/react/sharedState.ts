@@ -7,7 +7,10 @@ import { v4 as uuidv4 } from "uuid";
 
 declare global {
   interface Window {
-    StateReflectorBridge?: { postMessage?: (msg: string) => void };
+    StateReflectorBridge?: { 
+      postMessage?: (msg: string) => void;
+      ping?: () => void;
+    };
   }
 }
 
@@ -99,4 +102,6 @@ export function useSharedState<T>(
       /* ignore non-JSON or unrelated messages */
     }
   });
+
+  window.StateReflectorBridge?.ping?.();
 })();
