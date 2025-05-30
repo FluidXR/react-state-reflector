@@ -11,6 +11,7 @@ import org.json.JSONException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.BiConsumer;
+import android.util.Log;
 
 public class StateReflectorBridge {
 
@@ -19,6 +20,8 @@ public class StateReflectorBridge {
     private BiConsumer<String, Object> onStateUpdateFromJS;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    public boolean isInitialized = false;
 
     public StateReflectorBridge(WebView webView) {
         this.webView = webView;
@@ -73,5 +76,14 @@ public class StateReflectorBridge {
         } catch (JSONException e) {
             e.printStackTrace();
         }
+    }
+
+    /**
+     * JS can call this to confirm the interface is connected
+     */
+    @JavascriptInterface
+    public void ping() {
+        Log.d("StateReflectorBridge", "JS Interface is connected (ping received)");
+        isInitialized = true;
     }
 }
