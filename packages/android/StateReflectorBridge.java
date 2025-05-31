@@ -70,9 +70,10 @@ public class StateReflectorBridge {
             payload.put("type", "SHARED_STATE_UPDATE_FROM_NATIVE");
             payload.put("key", key);
             payload.put("value", value);
-
-            String script = "window.postMessage(" + payload.toString() + ", '*');";
-            mainHandler.post(() -> webView.evaluateJavascript(script, null));
+            String script = "window.postMessage('" + payload.toString() + "', '*');";
+            mainHandler.post(() -> {
+                webView.evaluateJavascript(script, null);
+            });
         } catch (JSONException e) {
             e.printStackTrace();
         }
