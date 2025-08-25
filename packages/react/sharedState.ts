@@ -93,13 +93,19 @@ export function useSharedState<T>(
 
   window.addEventListener("message", evt => {
     try {
+      if (evt.data === 'PING') {
+        log("← PING received from Android");
+        window.StateReflectorBridge?.ping?.();
+        return;
+      }
+      
       const { type, key, value } = JSON.parse(evt.data);
       if (type === "SHARED_STATE_UPDATE_FROM_NATIVE") {
         log("← from Android", { key, value });
-        dispatchToAll(key, value); // push to every hooked component
+        dispatchToAll(key, value);
       }
-    } catch {
-      /* ignore non-JSON or unrelated messages */
+    } catch (e) {
+      console.error("Error processing message:", e);
     }
   });
 

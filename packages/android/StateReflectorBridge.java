@@ -11,6 +11,7 @@ import org.json.JSONException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.BiConsumer;
+
 import android.util.Log;
 
 public class StateReflectorBridge {
@@ -18,6 +19,7 @@ public class StateReflectorBridge {
     private final WebView webView;
     private final Map<String, Object> sharedState = new HashMap<>();
     private BiConsumer<String, Object> onStateUpdateFromJS;
+    private BiConsumer<String, Object> onEventFromJS;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
@@ -41,6 +43,13 @@ public class StateReflectorBridge {
                 if (onStateUpdateFromJS != null) {
                     onStateUpdateFromJS.accept(key, value);
                 }
+            } else if ("EVENT".equals(type)) {
+                String event = message.getString("eventName");
+                Object data = message.get("data");
+                
+                if (onEventFromJS != null) {
+                    onEventFromJS.accept(event, data);
+                }
             }
         } catch (JSONException e) {
             e.printStackTrace();
@@ -52,6 +61,13 @@ public class StateReflectorBridge {
      */
     public void setOnStateUpdateListener(BiConsumer<String, Object> listener) {
         this.onStateUpdateFromJS = listener;
+    }
+
+    /**
+     * Set callback to recieve events from JS
+     */
+    public void setOnEventListener(BiConsumer<String, Object> listener) {
+        this.onEventFromJS = listener;
     }
 
     /**
@@ -77,6 +93,13 @@ public class StateReflectorBridge {
         } catch (JSONException e) {
             e.printStackTrace();
         }
+    }
+
+    public void requestPing() {
+        String script = "window.postMessage('PING', '*');";
+        mainHandler.post(() -> {
+            webView.evaluateJavascript(script, null);
+        });
     }
 
     /**
